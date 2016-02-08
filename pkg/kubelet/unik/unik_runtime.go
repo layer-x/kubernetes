@@ -23,6 +23,8 @@ import (
 	"hash/adler32"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	hashutil "k8s.io/kubernetes/pkg/util/hash"
+	"sort"
+	"time"
 )
 
 const (
@@ -70,9 +72,6 @@ func (r *UnikRuntime) GetPods(all bool) ([]*kubecontainer.Pod, error) {
 			continue
 		}
 		container := convertInstance(unikInstance)
-		if container.State == kubecontainer.ContainerStateExited && !all {
-			continue
-		}
 		podName, ok := unikInstance.Tags[KUBERNETES_POD_NAME]
 		if !ok {
 			podName = podId
@@ -104,7 +103,52 @@ func (r *UnikRuntime) GetPods(all bool) ([]*kubecontainer.Pod, error) {
 }
 
 func (r *UnikRuntime) GarbageCollect(gcPolicy kubecontainer.ContainerGCPolicy) error {
-	return lxerrors.New("not implemented", nil)
+	pods, err := r.GetPods(true)
+	if err != nil {
+		return lxerrors.New("could not get pods", err)
+	}
+	remainingContainersToDelete := []*kubecontainer.Container{}
+	newestGCTime := time.Now().Add(-gcPolicy.MinAge)
+	for _, pod := range pods {
+		//mark containers that are past due & dead
+		podContainersToDelete := []*kubecontainer.Container{}
+		for _, kubeContainer := range pod.Containers {
+			containerTime := time.Unix(kubeContainer.Created, 0)
+			if newestGCTime.Before(containerTime) && kubeContainer.State != kubecontainer.ContainerStateRunning {
+				podContainersToDelete = append(podContainersToDelete, kubeContainer)
+			}
+		}
+		//remove N oldest dead containers where N is # past MaxPodPerContainer
+		if gcPolicy.MaxPerPodContainer >= 0 {
+			toRemove := len(podContainersToDelete) - gcPolicy.MaxPerPodContainer
+			sortByOldest(podContainersToDelete)
+			if toRemove > 0 {
+				for i := 0; i < toRemove; i++ {
+					kubeContainer := podContainersToDelete[i]
+					err = r.client.DeleteUnikInstance(kubeContainer.ID)
+					if err != nil {
+						return lxerrors.New("could not garbage collect unik instance "+kubeContainer.ID, err)
+					}
+				}
+			}
+			podContainersToDelete = podContainersToDelete[toRemove:]
+		}
+		//remove any remaining containers that exceed total MaxContainers
+		remainingContainersToDelete = append(remainingContainersToDelete, podContainersToDelete...)
+	}
+	if gcPolicy.MaxContainers >= 0 && len(remainingContainersToDelete) > gcPolicy.MaxContainers {
+		sortByOldest(remainingContainersToDelete)
+		toRemove := len(remainingContainersToDelete) - gcPolicy.MaxContainers
+		for i := 0; i < toRemove; i++ {
+			kubeContainer := remainingContainersToDelete[i]
+			err = r.client.DeleteUnikInstance(kubeContainer.ID)
+			if err != nil {
+				return lxerrors.New("could not garbage collect unik instance "+kubeContainer.ID, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func convertInstance(unikInstance types.UnikInstance) *kubecontainer.Container {
@@ -131,4 +175,16 @@ func convertInstance(unikInstance types.UnikInstance) *kubecontainer.Container {
 		Created: unikInstance.Created.Unix(),
 		State:   containerState,
 	}
+}
+
+func sortByOldest(containers []*kubecontainer.Container) {
+	sort.Sort(oldestFirst(containers))
+}
+
+type oldestFirst []*kubecontainer.Container
+
+func (a oldestFirst) Len() int      { return len(a) }
+func (a oldestFirst) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a oldestFirst) Less(i, j int) bool {
+	return time.Unix(a[i].Created, 0).After(time.Unix(a[j].Created, 0))
 }
