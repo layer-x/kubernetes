@@ -88,6 +88,8 @@ import (
 	"k8s.io/kubernetes/pkg/watch"
 	"k8s.io/kubernetes/plugin/pkg/scheduler/algorithm/predicates"
 	"k8s.io/kubernetes/third_party/golang/expansion"
+
+	"k8s.io/kubernetes/pkg/kubelet/unik"
 )
 
 const (
@@ -412,6 +414,8 @@ func NewMainKubelet(
 		klet.containerRuntime = rktRuntime
 		// No Docker daemon to put in a container.
 		dockerDaemonContainer = ""
+	case "unik":
+		klet.containerRuntime = unik.NewUnikRuntime("52.90.77.152", 0)
 	default:
 		return nil, fmt.Errorf("unsupported container runtime %q specified", containerRuntime)
 	}

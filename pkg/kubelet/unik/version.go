@@ -26,8 +26,8 @@ type unikVersion struct {
 	version int
 }
 
-func newUnikVersion(version int) unikVersion {
-	return unikVersion{
+func newUnikVersion(version int) *unikVersion {
+	return &unikVersion{
 		version: version,
 	}
 }

@@ -425,7 +425,6 @@
 		},
 		{
 			"ImportPath": "github.com/fsouza/go-dockerclient",
-			"Comment": "0.2.1-860-g25bc220",
 			"Rev": "25bc220b299845ae5489fd19bf89c5278864b050"
 		},
 		{
@@ -757,6 +756,22 @@
 			"Rev": "f7ee69f31298ecbe5d2b349c711e2547a617d398"
 		},
 		{
+			"ImportPath": "github.com/layer-x/layerx-commons/lxerrors",
+			"Rev": "1b54e5d7362067ed0827030465314073dc16fbf3"
+		},
+		{
+			"ImportPath": "github.com/layer-x/layerx-commons/lxhttpclient",
+			"Rev": "1b54e5d7362067ed0827030465314073dc16fbf3"
+		},
+		{
+			"ImportPath": "github.com/layer-x/unik/types",
+			"Rev": "0acb129ec8105ce3b7a44437619f93faa724fe52"
+		},
+		{
+			"ImportPath": "github.com/layer-x/unik/unik_client",
+			"Rev": "0acb129ec8105ce3b7a44437619f93faa724fe52"
+		},
+		{
 			"ImportPath": "github.com/matttproud/golang_protobuf_extensions/pbutil",
 			"Rev": "fc2b8d3a73c4867e51861bbdd5ae3c1f0869dd6a"
 		},
@@ -1041,7 +1056,7 @@
 		},
 		{
 			"ImportPath": "k8s.io/heapster/api/v1/types",
-			"Comment": "v0.19.1",
+			"Comment": "v0.19.1-44-g0991ac5",
 			"Rev": "0991ac528ea24aae194e45d6dcf01896cb42cbea"
 		},
 		{
