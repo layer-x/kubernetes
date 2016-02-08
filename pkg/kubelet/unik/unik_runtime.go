@@ -42,16 +42,18 @@ const (
 )
 
 type UnikRuntime struct {
-	version         *unikVersion
-	client          *unik_client.UnikClient
-	livenessManager proberesults.Manager
+	version           *unikVersion
+	client            *unik_client.UnikClient
+	livenessManager   proberesults.Manager
+	containerStatuses map[string]*kubecontainer.ContainerStatus
 }
 
 func NewUnikRuntime(url string, version int) *UnikRuntime {
 	return &UnikRuntime{
-		client:          unik_client.NewUnikClient(url),
-		version:         newUnikVersion(version),
-		livenessManager: proberesults.NewManager(),
+		client:            unik_client.NewUnikClient(url),
+		version:           newUnikVersion(version),
+		livenessManager:   proberesults.NewManager(),
+		containerStatuses: make(map[string]*kubecontainer.ContainerStatus),
 	}
 }
 
@@ -257,15 +259,39 @@ func (r *UnikRuntime) RunPod(pod *api.Pod, pullSecrets []api.Secret) error {
 }
 
 func (r *UnikRuntime) GetPodStatus(uid kubetypes.UID, name, namespace string) (*kubecontainer.PodStatus, error) {
-	return nil, lxerrors.New("not implemented", nil)
+	podStatus := &kubecontainer.PodStatus{ID: uid, Name: name, Namespace: namespace}
+	var containerStatuses []*kubecontainer.ContainerStatus
+	pods, err := r.GetPods(true)
+	if err != nil {
+		return nil, lxerrors.New("could not get pods", err)
+	}
+	for _, pod := range pods {
+		if pod.ID == uid {
+			for _, kubeContainer := range pod.Containers {
+				status := generateContainerStatus(kubeContainer)
+				containerStatuses = append(containerStatuses, status)
+			}
+		}
+	}
+	podStatus.ContainerStatuses = containerStatuses
+	return podStatus, nil
 }
 
 func (r *UnikRuntime) PullImage(image kubecontainer.ImageSpec, pullSecrets []api.Secret) error {
-	return lxerrors.New("not implemented", nil)
+	return lxerrors.New("you must run \"unik push "+image.Image+" path/to/source/code in order to make this image available to kubernenetes", nil)
 }
 
 func (r *UnikRuntime) IsImagePresent(image kubecontainer.ImageSpec) (bool, error) {
-	return false, lxerrors.New("not implemented", nil)
+	//	unikernels, err := r.client.ListUnikernels()
+	//	if err != nil {
+	//		return false, lxerrors.New("failed to retrieve unikernel list", err)
+	//	}
+	//	for _, unikernel := range unikernels {
+	//		if unikernel.UnikernelName == image.Image {
+	//			return true, nil
+	//		}
+	//	}
+	return false, nil
 }
 
 func (r *UnikRuntime) ListImages() ([]kubecontainer.Image, error) {
@@ -294,6 +320,29 @@ func (r *UnikRuntime) PortForward(pod *kubecontainer.Pod, port uint16, stream io
 
 func (r *UnikRuntime) AttachContainer(id kubecontainer.ContainerID, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool) (err error) {
 	return lxerrors.New("not implemented", nil)
+}
+
+func generateContainerStatus(kubeContainer *kubecontainer.Container) *kubecontainer.ContainerStatus {
+	finishedAt := time.Unix(0, 0)
+	if kubeContainer.State == kubecontainer.ContainerStateExited {
+		finishedAt = time.Now()
+	}
+	status := &kubecontainer.ContainerStatus{
+		ID:           kubeContainer.ID,
+		Name:         kubeContainer.Name,
+		State:        kubeContainer.State,
+		CreatedAt:    time.Unix(kubeContainer.Created, 0),
+		StartedAt:    time.Unix(kubeContainer.Created, 0),
+		FinishedAt:   finishedAt, //todo(sw): figure out a way to store exit time of unikernel
+		ExitCode:     0,          //todo(sw): figure out a way to determine unikernel exit failure/success
+		Image:        kubeContainer.Image,
+		ImageID:      "unik://" + kubeContainer.Image,
+		Hash:         kubeContainer.Hash,
+		RestartCount: 0,                        //todo(sw): figure out a way to store restart count for apps
+		Reason:       "because unik said so!",  //todo(sw): figure a way to send reasons? (optional)
+		Message:      "unik instance finished", //todo(sw): get the last line of the logs, perhaps?
+	}
+	return status
 }
 
 func (r *UnikRuntime) deleteContainer(unikInstanceId string) error {
