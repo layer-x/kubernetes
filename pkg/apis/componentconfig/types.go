@@ -228,6 +228,8 @@ type KubeletConfiguration struct {
 	CgroupRoot string `json:"cgroupRoot,omitempty"`
 	// containerRuntime is the container runtime to use.
 	ContainerRuntime string `json:"containerRuntime"`
+	// unik ip is the ip of the unik backend
+	UnikIp string `json:"unikIp"`
 	// rktPath is hte path of rkt binary. Leave empty to use the first rkt in
 	// $PATH.
 	RktPath string `json:"rktPath,omitempty"`

@@ -209,6 +209,7 @@ func NewMainKubelet(
 	enableCustomMetrics bool,
 	volumeStatsAggPeriod time.Duration,
 	containerRuntimeOptions []kubecontainer.Option,
+	unikIp string,
 ) (*Kubelet, error) {
 	if rootDirectory == "" {
 		return nil, fmt.Errorf("invalid root directory %q", rootDirectory)
@@ -415,7 +416,7 @@ func NewMainKubelet(
 		// No Docker daemon to put in a container.
 		dockerDaemonContainer = ""
 	case "unik":
-		klet.containerRuntime = unik.NewUnikRuntime("52.90.77.152", 0)
+		klet.containerRuntime = unik.NewUnikRuntime(unikIp, 0)
 	default:
 		return nil, fmt.Errorf("unsupported container runtime %q specified", containerRuntime)
 	}

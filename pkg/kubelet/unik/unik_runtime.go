@@ -282,44 +282,61 @@ func (r *UnikRuntime) PullImage(image kubecontainer.ImageSpec, pullSecrets []api
 }
 
 func (r *UnikRuntime) IsImagePresent(image kubecontainer.ImageSpec) (bool, error) {
-	//	unikernels, err := r.client.ListUnikernels()
-	//	if err != nil {
-	//		return false, lxerrors.New("failed to retrieve unikernel list", err)
-	//	}
-	//	for _, unikernel := range unikernels {
-	//		if unikernel.UnikernelName == image.Image {
-	//			return true, nil
-	//		}
-	//	}
+	unikernels, err := r.client.ListUnikernels()
+	if err != nil {
+		return false, lxerrors.New("failed to retrieve unikernel list", err)
+	}
+	for _, unikernel := range unikernels {
+		if unikernel.UnikernelName == image.Image {
+			return true, nil
+		}
+	}
 	return false, nil
 }
 
 func (r *UnikRuntime) ListImages() ([]kubecontainer.Image, error) {
-	return []kubecontainer.Image{}, lxerrors.New("not implemented", nil)
+	images := []kubecontainer.Image{}
+	unikernels, err := r.client.ListUnikernels()
+	if err != nil {
+		return []kubecontainer.Image{}, lxerrors.New("failed to retrieve unikernel list", err)
+	}
+	for _, unikernel := range unikernels {
+		images = append(images, convertUnikernel(unikernel))
+	}
+	return images, nil
 }
 
 func (r *UnikRuntime) RemoveImage(image kubecontainer.ImageSpec) error {
-	return lxerrors.New("not implemented", nil)
+	return r.client.DeleteUnikernel(image.Image, true)
 }
 
 func (r *UnikRuntime) GetContainerLogs(pod *api.Pod, containerID kubecontainer.ContainerID, logOptions *api.PodLogOptions, stdout, stderr io.Writer) (err error) {
-	return lxerrors.New("not implemented", nil)
+	if logOptions.Follow {
+		return r.client.FollowUnikInstanceLogs(containerID.ID, stdout)
+	} else {
+		logStr, err := r.client.GetUnikInstanceLogs(containerID.ID)
+		if err != nil {
+			return err
+		}
+		_, err = stdout.Write([]byte(logStr))
+		return err
+	}
 }
 
 func (r *UnikRuntime) RunInContainer(containerID kubecontainer.ContainerID, cmd []string) ([]byte, error) {
-	return []byte{}, lxerrors.New("not implemented", nil)
+	return []byte{}, lxerrors.New("Run in container not supported for unikernels", nil)
 }
 
 func (r *UnikRuntime) ExecInContainer(containerID kubecontainer.ContainerID, cmd []string, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool) error {
-	return lxerrors.New("not implemented", nil)
+	return lxerrors.New("Exec in container not supported for unikernels", nil)
 }
 
 func (r *UnikRuntime) PortForward(pod *kubecontainer.Pod, port uint16, stream io.ReadWriteCloser) error {
-	return lxerrors.New("not implemented", nil)
+	return lxerrors.New("Port forward not supported for unikernels", nil)
 }
 
 func (r *UnikRuntime) AttachContainer(id kubecontainer.ContainerID, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool) (err error) {
-	return lxerrors.New("not implemented", nil)
+	return lxerrors.New("Attach container not supported for unikernels", nil)
 }
 
 func generateContainerStatus(kubeContainer *kubecontainer.Container) *kubecontainer.ContainerStatus {
@@ -363,6 +380,14 @@ func (r *UnikRuntime) runContainer(unikernelName, podId, podName, podNamespace, 
 		return lxerrors.New("failed to run unikernel "+unikernelName, err)
 	}
 	return nil
+}
+
+func convertUnikernel(unikernel *types.Unikernel) kubecontainer.Image {
+	return kubecontainer.Image{
+		ID:       unikernel.UnikernelName,
+		RepoTags: []string{unikernel.AMI},
+		Size:     1000, //todo(sw): get ami size from amazon
+	}
 }
 
 func convertInstance(unikInstance *types.UnikInstance) *kubecontainer.Container {

@@ -250,6 +250,8 @@ func UnsecuredKubeletConfig(s *options.KubeletServer) (*KubeletConfig, error) {
 		VolumePlugins:                  ProbeVolumePlugins(s.VolumePluginDir),
 		OutOfDiskTransitionFrequency:   s.OutOfDiskTransitionFrequency.Duration,
 
+		UnikIp:                         s.UnikIp,
+
 		ExperimentalFlannelOverlay: s.ExperimentalFlannelOverlay,
 		NodeIP: net.ParseIP(s.NodeIP),
 	}, nil
@@ -731,6 +733,8 @@ type KubeletConfig struct {
 	VolumePlugins                  []volume.VolumePlugin
 	OutOfDiskTransitionFrequency   time.Duration
 
+	UnikIp                         string
+
 	ExperimentalFlannelOverlay bool
 	NodeIP                     net.IP
 	ContainerRuntimeOptions    []kubecontainer.Option
@@ -822,6 +826,7 @@ func CreateAndInitKubelet(kc *KubeletConfig) (k KubeletBootstrap, pc *config.Pod
 		kc.EnableCustomMetrics,
 		kc.VolumeStatsAggPeriod,
 		kc.ContainerRuntimeOptions,
+		kc.UnikIp,
 	)
 
 	if err != nil {
