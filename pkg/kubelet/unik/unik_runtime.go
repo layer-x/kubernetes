@@ -45,7 +45,7 @@ type UnikRuntime struct {
 	version           *unikVersion
 	client            *unik_client.UnikClient
 	livenessManager   proberesults.Manager
-	containerStatuses map[string]*kubecontainer.ContainerStatus
+	containerRestarts map[string]int
 }
 
 func NewUnikRuntime(url string, version int) *UnikRuntime {
@@ -53,7 +53,7 @@ func NewUnikRuntime(url string, version int) *UnikRuntime {
 		client:            unik_client.NewUnikClient(url),
 		version:           newUnikVersion(version),
 		livenessManager:   proberesults.NewManager(),
-		containerStatuses: make(map[string]*kubecontainer.ContainerStatus),
+		containerRestarts: make(map[string]int),
 	}
 }
 
@@ -70,7 +70,7 @@ func (r *UnikRuntime) APIVersion() (kubecontainer.Version, error) {
 }
 
 func (r *UnikRuntime) GetPods(all bool) ([]*kubecontainer.Pod, error) {
-	glog.V(4).Infof("Unik is retreving all pods.")
+	glog.V(3).Infof("Unik is retreving all pods.")
 	unikInstances, err := r.client.GetUnikInstances()
 	if err != nil {
 		return nil, lxerrors.New("could not retrieve unik instances from backend", err)
@@ -114,7 +114,7 @@ func (r *UnikRuntime) GetPods(all bool) ([]*kubecontainer.Pod, error) {
 }
 
 func (r *UnikRuntime) GarbageCollect(gcPolicy kubecontainer.ContainerGCPolicy) error {
-	glog.V(4).Infof("Unik is running garbage collection.")
+	glog.V(3).Infof("Unik is running garbage collection.")
 	pods, err := r.GetPods(true)
 	if err != nil {
 		return lxerrors.New("could not get pods", err)
@@ -165,7 +165,7 @@ func (r *UnikRuntime) GarbageCollect(gcPolicy kubecontainer.ContainerGCPolicy) e
 
 func (r *UnikRuntime) SyncPod(pod *api.Pod, podStatus api.PodStatus, internalPodStatus *kubecontainer.PodStatus, pullSecrets []api.Secret, backOff *util.Backoff) kubecontainer.PodSyncResult {
 	var result kubecontainer.PodSyncResult
-	glog.V(4).Infof("Unik is syncing pod %v.", pod)
+	glog.V(3).Infof("Unik is syncing pod %v with status %v.", pod, podStatus)
 	var err error
 	defer func() {
 		if err != nil {
@@ -245,14 +245,16 @@ func (r *UnikRuntime) SyncPod(pod *api.Pod, podStatus api.PodStatus, internalPod
 			runPodResult.AddSyncResult(containerRunResult)
 		}
 		result.AddPodSyncResult(runPodResult)
+		restarts := r.containerRestarts[string(pod.UID)]
+		r.containerRestarts[string(pod.UID)] = restarts + 1
 	}
 	return result
 }
 
 func (r *UnikRuntime) KillPod(pod *api.Pod, runningPod kubecontainer.Pod) error {
-	glog.V(4).Infof("Unik is killing pod: name %q.", runningPod.Name)
+	glog.V(3).Infof("Unik is killing pod: name %q.", runningPod.Name)
 	for _, kubeContainer := range runningPod.Containers {
-		glog.V(4).Infof("Unik is deleting container: name %s.", kubeContainer.ID.ID)
+		glog.V(3).Infof("Unik is deleting container: name %s.", kubeContainer.ID.ID)
 		err := r.deleteContainer(kubeContainer.ID.ID)
 		if err != nil {
 			return lxerrors.New("failed to kill container for pod "+string(runningPod.ID), err)
@@ -262,9 +264,9 @@ func (r *UnikRuntime) KillPod(pod *api.Pod, runningPod kubecontainer.Pod) error 
 }
 
 func (r *UnikRuntime) RunPod(pod *api.Pod, pullSecrets []api.Secret) error {
-	glog.V(4).Infof("Unik is running pod: name %q.", pod.Name)
+	glog.V(3).Infof("Unik is running pod: name %q.", pod.Name)
 	for _, desiredContainer := range pod.Spec.Containers {
-		glog.V(4).Infof("Unik is running container %s for pod.", desiredContainer.Name)
+		glog.V(3).Infof("Unik is running container %s for pod.", desiredContainer.Name)
 		err := r.runContainer(desiredContainer.Image, string(pod.UID), pod.Name, pod.Namespace, desiredContainer.Name)
 		if err != nil {
 			return lxerrors.New("failed to run container "+desiredContainer.Name+" for pod "+string(pod.UID), err)
@@ -283,12 +285,13 @@ func (r *UnikRuntime) GetPodStatus(uid kubetypes.UID, name, namespace string) (*
 	for _, pod := range pods {
 		if pod.ID == uid {
 			for _, kubeContainer := range pod.Containers {
-				status := generateContainerStatus(kubeContainer)
+				status := generateContainerStatus(r.containerRestarts[string(uid)], kubeContainer)
 				containerStatuses = append(containerStatuses, status)
 			}
 		}
 	}
 	podStatus.ContainerStatuses = containerStatuses
+	glog.V(3).Infof("Pod status: %v.", podStatus)
 	return podStatus, nil
 }
 
@@ -354,7 +357,7 @@ func (r *UnikRuntime) AttachContainer(id kubecontainer.ContainerID, stdin io.Rea
 	return lxerrors.New("Attach container not supported for unikernels", nil)
 }
 
-func generateContainerStatus(kubeContainer *kubecontainer.Container) *kubecontainer.ContainerStatus {
+func generateContainerStatus(restarts int, kubeContainer *kubecontainer.Container) *kubecontainer.ContainerStatus {
 	finishedAt := time.Unix(0, 0)
 	if kubeContainer.State == kubecontainer.ContainerStateExited {
 		finishedAt = time.Now()
@@ -366,11 +369,11 @@ func generateContainerStatus(kubeContainer *kubecontainer.Container) *kubecontai
 		CreatedAt:    time.Unix(kubeContainer.Created, 0),
 		StartedAt:    time.Unix(kubeContainer.Created, 0),
 		FinishedAt:   finishedAt, //todo(sw): figure out a way to store exit time of unikernel
-		ExitCode:     0,          //todo(sw): figure out a way to determine unikernel exit failure/success
+//		ExitCode:     0,          //todo(sw): figure out a way to determine unikernel exit failure/success
 		Image:        kubeContainer.Image,
 		ImageID:      "unik://" + kubeContainer.Image,
 		Hash:         kubeContainer.Hash,
-		RestartCount: 0,                        //todo(sw): figure out a way to store restart count for apps
+		RestartCount: restarts,                        //todo(sw): figure out a way to store restart count for apps
 		Reason:       "because unik said so!",  //todo(sw): figure a way to send reasons? (optional)
 		Message:      "unik instance finished", //todo(sw): get the last line of the logs, perhaps?
 	}
@@ -406,17 +409,16 @@ func convertUnikernel(unikernel *types.Unikernel) kubecontainer.Image {
 }
 
 func convertInstance(unikInstance *types.UnikInstance) *kubecontainer.Container {
-	containerState := kubecontainer.ContainerStateUnknown
+	glog.V(3).Infof("Converting instance: %v", unikInstance)
+	containerState := kubecontainer.ContainerStateRunning
 	switch unikInstance.State {
-	case "pending":
-	case "running":
-		containerState = kubecontainer.ContainerStateRunning
 	case "shutting-down":
 	case "terminated":
 		containerState = kubecontainer.ContainerStateExited
+	default:
+		glog.V(3).Infof("My state was: %s", unikInstance.State)
 	}
-
-	return &kubecontainer.Container{
+	kubeContainer := &kubecontainer.Container{
 		ID: kubecontainer.ContainerID{
 			Type: "unik",
 			ID:   unikInstance.UnikInstanceID,
@@ -427,6 +429,8 @@ func convertInstance(unikInstance *types.UnikInstance) *kubecontainer.Container 
 		Created: unikInstance.Created.Unix(),
 		State:   containerState,
 	}
+	glog.V(3).Infof("Converted to: %v", kubeContainer)
+	return kubeContainer
 }
 
 func hashUnikInstance(unikInstance *types.UnikInstance) uint64 {
