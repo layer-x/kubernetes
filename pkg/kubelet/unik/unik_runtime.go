@@ -38,7 +38,7 @@ import (
 const (
 	KUBERNETES_POD_ID        = "KUBERNETES_POD_ID"
 	KUBERNETES_POD_NAME      = "KUBERNETES_POD_NAME"
-	KUBERNETES_POD_NAMESPACE = "KUBERNETES_POD_NAMESPACE "
+	KUBERNETES_POD_NAMESPACE = "KUBERNETES_POD_NAMESPACE"
 )
 
 type UnikRuntime struct {
@@ -391,7 +391,7 @@ func convertUnikernel(unikernel *types.Unikernel) kubecontainer.Image {
 }
 
 func convertInstance(unikInstance *types.UnikInstance) *kubecontainer.Container {
-	var containerState kubecontainer.ContainerState
+	containerState := kubecontainer.ContainerStateUnknown
 	switch unikInstance.State {
 	case "pending":
 	case "running":
@@ -399,8 +399,6 @@ func convertInstance(unikInstance *types.UnikInstance) *kubecontainer.Container 
 	case "shutting-down":
 	case "terminated":
 		containerState = kubecontainer.ContainerStateExited
-	default:
-		containerState = kubecontainer.ContainerStateUnknown
 	}
 
 	return &kubecontainer.Container{
