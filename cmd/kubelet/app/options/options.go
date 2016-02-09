@@ -74,7 +74,7 @@ func NewKubeletServer() *KubeletServer {
 			CgroupRoot:                  "",
 			ConfigureCBR0:               false,
 			ContainerRuntime:            "unik",
-			UnikIp:            	         "52.90.77.152",
+			UnikIp:            	         "52.90.77.152:3000",
 			CPUCFSQuota:                 true,
 			DockerExecHandlerName:       "native",
 			EventBurst:                  10,

@@ -367,6 +367,7 @@ func NewMainKubelet(
 	klet.podCache = kubecontainer.NewCache()
 
 	// Initialize the runtime.
+	glog.V(4).Infof("Container Runtime: %s.", containerRuntime)
 	switch containerRuntime {
 	case "docker":
 		// Only supported one for now, continue.
