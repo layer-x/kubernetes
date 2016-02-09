@@ -70,16 +70,16 @@ func (r *UnikRuntime) APIVersion() (kubecontainer.Version, error) {
 }
 
 func (r *UnikRuntime) GetPods(all bool) ([]*kubecontainer.Pod, error) {
-	glog.V(3).Infof("Unik is retreving all pods.")
 	unikInstances, err := r.client.GetUnikInstances()
 	if err != nil {
 		return nil, lxerrors.New("could not retrieve unik instances from backend", err)
 	}
+	glog.V(3).Infof("Unik is retrieved %q instaces.", unikInstances)
 	pods := []*kubecontainer.Pod{}
 	for _, unikInstance := range unikInstances {
 		podId, ok := unikInstance.Tags[KUBERNETES_POD_ID]
 		if !ok {
-			//received an instance that isn't ours
+			glog.V(3).Infof("received an instance that isnt ours: %q.", unikInstance)
 			continue
 		}
 		container := convertInstance(unikInstance)
@@ -182,7 +182,6 @@ func (r *UnikRuntime) SyncPod(pod *api.Pod, podStatus api.PodStatus, internalPod
 
 	restartPod := false
 	for _, container := range pod.Spec.Containers {
-		expectedHash := kubecontainer.HashContainer(&container)
 
 		c := runningPod.FindContainerByName(container.Name)
 		if c == nil {
@@ -194,16 +193,6 @@ func (r *UnikRuntime) SyncPod(pod *api.Pod, podStatus api.PodStatus, internalPod
 				break
 			}
 			continue
-		}
-
-		// TODO: check for non-root image directives.  See ../docker/manager.go#SyncPod
-
-		// TODO(yifan): Take care of host network change.
-		containerChanged := c.Hash != 0 && c.Hash != expectedHash
-		if containerChanged {
-			glog.Infof("Pod %q container %q hash changed (%d vs %d), it will be killed and re-created.", format.Pod(pod), container.Name, c.Hash, expectedHash)
-			restartPod = true
-			break
 		}
 
 		liveness, found := r.livenessManager.Get(c.ID)
@@ -291,7 +280,7 @@ func (r *UnikRuntime) GetPodStatus(uid kubetypes.UID, name, namespace string) (*
 		}
 	}
 	podStatus.ContainerStatuses = containerStatuses
-	glog.V(3).Infof("Pod status: %v.", podStatus)
+	glog.V(3).Infof("Unik GetPodStatus: %v.", podStatus)
 	return podStatus, nil
 }
 
