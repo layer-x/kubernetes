@@ -163,7 +163,8 @@ func (r *UnikRuntime) GarbageCollect(gcPolicy kubecontainer.ContainerGCPolicy) e
 	return nil
 }
 
-func (r *UnikRuntime) SyncPod(pod *api.Pod, podStatus api.PodStatus, internalPodStatus *kubecontainer.PodStatus, pullSecrets []api.Secret, backOff *util.Backoff) (result kubecontainer.PodSyncResult) {
+func (r *UnikRuntime) SyncPod(pod *api.Pod, podStatus api.PodStatus, internalPodStatus *kubecontainer.PodStatus, pullSecrets []api.Secret, backOff *util.Backoff) kubecontainer.PodSyncResult {
+	var result kubecontainer.PodSyncResult
 	glog.V(4).Infof("Unik is syncing pod %v.", pod)
 	var err error
 	defer func() {
@@ -223,15 +224,29 @@ func (r *UnikRuntime) SyncPod(pod *api.Pod, podStatus api.PodStatus, internalPod
 	if restartPod {
 		// Kill the pod only if the pod is actually running.
 		if len(runningPod.Containers) > 0 {
-			if err = r.KillPod(pod, runningPod); err != nil {
-				return
+			err = r.KillPod(pod, runningPod)
+			if err != nil {
+				return result
 			}
+			var killPodResult kubecontainer.PodSyncResult
+			for _, kubeContainer := range runningPod.Containers {
+				killContainerResult := kubecontainer.NewSyncResult(kubecontainer.KillContainer, kubeContainer.Name)
+				killPodResult.AddSyncResult(killContainerResult)
+			}
+			result.AddPodSyncResult(killPodResult)
 		}
-		if err = r.RunPod(pod, pullSecrets); err != nil {
-			return
+		err = r.RunPod(pod, pullSecrets)
+		if err != nil {
+			return result
 		}
+		var runPodResult kubecontainer.PodSyncResult
+		for _, desiredContainer := range pod.Spec.Containers {
+			containerRunResult := kubecontainer.NewSyncResult(kubecontainer.StartContainer, desiredContainer.Name)
+			runPodResult.AddSyncResult(containerRunResult)
+		}
+		result.AddPodSyncResult(runPodResult)
 	}
-	return
+	return result
 }
 
 func (r *UnikRuntime) KillPod(pod *api.Pod, runningPod kubecontainer.Pod) error {
