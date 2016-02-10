@@ -77,17 +77,17 @@ func (r *UnikRuntime) GetPods(all bool) ([]*kubecontainer.Pod, error) {
 	glog.V(3).Infof("Unik is retrieved %q instaces.", unikInstances)
 	pods := []*kubecontainer.Pod{}
 	for _, unikInstance := range unikInstances {
-		podId, ok := unikInstance.Tags[KUBERNETES_POD_ID]
+		podId, ok := unikInstance.UnikInstanceData.Tags[KUBERNETES_POD_ID]
 		if !ok {
 			glog.V(3).Infof("received an instance that isnt ours: %q.", unikInstance)
 			continue
 		}
 		container := convertInstance(unikInstance)
-		podName, ok := unikInstance.Tags[KUBERNETES_POD_NAME]
+		podName, ok := unikInstance.UnikInstanceData.Tags[KUBERNETES_POD_NAME]
 		if !ok {
 			podName = podId
 		}
-		podNameSpace, ok := unikInstance.Tags[KUBERNETES_POD_NAMESPACE]
+		podNameSpace, ok := unikInstance.UnikInstanceData.Tags[KUBERNETES_POD_NAMESPACE]
 		if !ok {
 			podNameSpace = "UNIK_NAMESPACE"
 		}
@@ -256,7 +256,11 @@ func (r *UnikRuntime) RunPod(pod *api.Pod, pullSecrets []api.Secret) error {
 	glog.V(3).Infof("Unik is running pod: name %q.", pod.Name)
 	for _, desiredContainer := range pod.Spec.Containers {
 		glog.V(3).Infof("Unik is running container %s for pod.", desiredContainer.Name)
-		err := r.runContainer(desiredContainer.Image, string(pod.UID), pod.Name, pod.Namespace, desiredContainer.Name)
+		env := make(map[string]string)
+		for _, envVar := range desiredContainer.Env {
+			env[envVar.Name] = env[envVar.Value]
+		}
+		err := r.runContainer(desiredContainer.Image, string(pod.UID), pod.Name, pod.Namespace, desiredContainer.Name, env)
 		if err != nil {
 			return lxerrors.New("failed to run container "+desiredContainer.Name+" for pod "+string(pod.UID), err)
 		}
@@ -352,17 +356,17 @@ func generateContainerStatus(restarts int, kubeContainer *kubecontainer.Containe
 		finishedAt = time.Now()
 	}
 	status := &kubecontainer.ContainerStatus{
-		ID:           kubeContainer.ID,
-		Name:         kubeContainer.Name,
-		State:        kubeContainer.State,
-		CreatedAt:    time.Unix(kubeContainer.Created, 0),
-		StartedAt:    time.Unix(kubeContainer.Created, 0),
-		FinishedAt:   finishedAt, //todo(sw): figure out a way to store exit time of unikernel
-//		ExitCode:     0,          //todo(sw): figure out a way to determine unikernel exit failure/success
+		ID:         kubeContainer.ID,
+		Name:       kubeContainer.Name,
+		State:      kubeContainer.State,
+		CreatedAt:  time.Unix(kubeContainer.Created, 0),
+		StartedAt:  time.Unix(kubeContainer.Created, 0),
+		FinishedAt: finishedAt, //todo(sw): figure out a way to store exit time of unikernel
+		//		ExitCode:     0,          //todo(sw): figure out a way to determine unikernel exit failure/success
 		Image:        kubeContainer.Image,
 		ImageID:      "unik://" + kubeContainer.Image,
 		Hash:         kubeContainer.Hash,
-		RestartCount: restarts,                        //todo(sw): figure out a way to store restart count for apps
+		RestartCount: restarts,                 //todo(sw): figure out a way to store restart count for apps
 		Reason:       "because unik said so!",  //todo(sw): figure a way to send reasons? (optional)
 		Message:      "unik instance finished", //todo(sw): get the last line of the logs, perhaps?
 	}
@@ -377,12 +381,12 @@ func (r *UnikRuntime) deleteContainer(unikInstanceId string) error {
 	return nil
 }
 
-func (r *UnikRuntime) runContainer(unikernelName, podId, podName, podNamespace, containerName string) error {
+func (r *UnikRuntime) runContainer(unikernelName, podId, podName, podNamespace, containerName string, env map[string]string) error {
 	tags := make(map[string]string)
 	tags[KUBERNETES_POD_ID] = podId
 	tags[KUBERNETES_POD_NAME] = podName
 	tags[KUBERNETES_POD_NAMESPACE] = podNamespace
-	err := r.client.RunUnikernel(unikernelName, containerName, 1, tags)
+	err := r.client.RunUnikernel(unikernelName, containerName, 1, tags, env)
 	if err != nil {
 		return lxerrors.New("failed to run unikernel "+unikernelName, err)
 	}

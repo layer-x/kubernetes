@@ -765,11 +765,11 @@
 		},
 		{
 			"ImportPath": "github.com/layer-x/unik/types",
-			"Rev": "6b53c1d57d7345988bc5fc2bae1b4273ee91649a"
+			"Rev": "e7e5a019d789a850370e1b2b2de931abb5e3afca"
 		},
 		{
 			"ImportPath": "github.com/layer-x/unik/unik_client",
-			"Rev": "6b53c1d57d7345988bc5fc2bae1b4273ee91649a"
+			"Rev": "e7e5a019d789a850370e1b2b2de931abb5e3afca"
 		},
 		{
 			"ImportPath": "github.com/matttproud/golang_protobuf_extensions/pbutil",
